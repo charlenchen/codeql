@@ -184,14 +184,32 @@ private class ArrayContent extends Content, TArrayContent {
   override string toString() { result = "array" }
 }
 
+private predicate storeStepNoChi(Node node1, Content f, PostUpdateNode node2) {
+  exists(FieldAddressInstruction fa, StoreInstruction store |
+    store = node2.asInstruction() and
+    store.getDestinationAddress() = fa and
+    store.getSourceValue() = node1.asInstruction() and
+    f.(FieldContent).getField() = fa.getField()
+  )
+}
+
+private predicate storeStepChi(Node node1, Content f, PostUpdateNode node2) {
+  exists(FieldAddressInstruction fa, StoreInstruction store |
+    node1.asInstruction() = store and
+    store.getDestinationAddress() = fa and
+    node2.asInstruction().(ChiInstruction).getPartial() = store and
+    f.(FieldContent).getField() = fa.getField()
+  )
+}
+
 /**
  * Holds if data can flow from `node1` to `node2` via an assignment to `f`.
  * Thus, `node2` references an object with a field `f` that contains the
  * value of `node1`.
  */
-predicate storeStep(Node node1, Content f, StoreStepNode node2) {
-  node2.getStoredValue() = node1 and
-  f.(FieldContent).getField() = node2.getAField()
+predicate storeStep(Node node1, Content f, PostUpdateNode node2) {
+  storeStepNoChi(node1, f, node2) or
+  storeStepChi(node1, f, node2)
 }
 
 /**
@@ -199,34 +217,41 @@ predicate storeStep(Node node1, Content f, StoreStepNode node2) {
  * Thus, `node1` references an object with a field `f` whose value ends up in
  * `node2`.
  */
-predicate readStep(Node node1, Content f, ReadStepNode node2) {
-  node2.getReadValue() = node1 and
-  f.(FieldContent).getField() = node2.getAField()
+predicate readStep(Node node1, Content f, Node node2) {
+  exists(FieldAddressInstruction fa, LoadInstruction load |
+    load.getSourceAddress() = fa and
+    node1.asInstruction() = load.getSourceValueOperand().getAnyDef() and
+    fa.getField() = f.(FieldContent).getField() and
+    load = node2.asInstruction()
+  )
 }
 
 /**
- * Gets a representative (boxed) type for `t` for the purpose of pruning
- * possible flow. A single type is used for all numeric types to account for
- * numeric conversions, and otherwise the erasure is used.
+ * Holds if values stored inside content `c` are cleared at node `n`.
  */
-Type getErasedRepr(Type t) {
-  suppressUnusedType(t) and
-  result instanceof VoidType // stub implementation
+predicate clearsContent(Node n, Content c) {
+  none() // stub implementation
 }
 
-/** Gets a string representation of a type returned by `getErasedRepr`. */
-string ppReprType(Type t) { none() } // stub implementation
+/** Gets the type of `n` used for type pruning. */
+IRType getNodeType(Node n) {
+  suppressUnusedNode(n) and
+  result instanceof IRVoidType // stub implementation
+}
+
+/** Gets a string representation of a type returned by `getNodeType`. */
+string ppReprType(IRType t) { none() } // stub implementation
 
 /**
  * Holds if `t1` and `t2` are compatible, that is, whether data can flow from
  * a node of type `t1` to a node of type `t2`.
  */
 pragma[inline]
-predicate compatibleTypes(Type t1, Type t2) {
+predicate compatibleTypes(IRType t1, IRType t2) {
   any() // stub implementation
 }
 
-private predicate suppressUnusedType(Type t) { any() }
+private predicate suppressUnusedNode(Node n) { any() }
 
 //////////////////////////////////////////////////////////////////////////////
 // Java QL library compatibility wrappers
@@ -246,7 +271,7 @@ class DataFlowCallable = Declaration;
 
 class DataFlowExpr = Expr;
 
-class DataFlowType = Type;
+class DataFlowType = IRType;
 
 /** A function call relevant for data flow. */
 class DataFlowCall extends CallInstruction {
@@ -278,4 +303,4 @@ predicate isImmutableOrUnobservable(Node n) {
 }
 
 /** Holds if `n` should be hidden from path explanations. */
-predicate nodeIsHidden(Node n) { none() }
+predicate nodeIsHidden(Node n) { n instanceof OperandNode }
